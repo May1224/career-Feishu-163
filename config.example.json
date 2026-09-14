@@ -1,0 +1,7 @@
+{
+  "email": "your-name@163.com",
+  "backend": "cli",
+  "timezone": "Asia/Shanghai",
+  "folders": ["INBOX"],
+  "initial_since": null
+}

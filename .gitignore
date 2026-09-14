@@ -1,0 +1,10 @@
+/data/*
+!/data/.gitkeep
+/config.json
+/.cache/
+/.agents/
+/skills-lock.json
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage

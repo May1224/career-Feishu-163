@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "career-email-tracker"
+version = "0.1.0"
+description = "Read-only 163 recruitment-email tracker for Codex and Feishu Base"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+career-tracker = "career_tracker.__main__:main"
+
+[tool.setuptools]
+packages = ["career_tracker"]
