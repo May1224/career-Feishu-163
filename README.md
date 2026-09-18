@@ -1,6 +1,6 @@
 # 163 求职邮件跟踪器
 
-本机只读扫描 163 邮箱中的招聘邮件，由 Codex 归纳求职进展，并同步到飞书多维表格。项目不调用额外模型 API；飞书身份由本机已登录的 `lark-cli` 管理。
+只读扫描 163 邮箱中的招聘邮件，并同步到飞书多维表格。既可在本机由 Codex 辅助分析，也可由 GitHub Actions 每日无人值守运行。
 
 ## 功能
 
@@ -8,7 +8,8 @@
 - 同一公司、岗位和招聘批次分别跟踪；稳定同步键防止飞书重复建行。
 - 总览只显示公司名、岗位名、流程阶段、阶段截止时间，并按收件日期倒序。
 - 一条 `run` 命令完成一次有界读取；没有待分析邮件时自动同步飞书。
-- 邮件正文保留在本机 SQLite 数据库中，不设自动过期时间。
+- GitHub Actions 运行时将 IMAP 游标保存在飞书的“系统状态”表中；不依赖 Actions 的临时磁盘。
+- 没有模型 API Key 时，使用保守规则识别明确的投递、测评、笔试、面试和淘汰邮件；不确定内容进入待确认。
 
 ## 运行环境
 
@@ -16,6 +17,14 @@
 - Python 3.10+
 - 已安装并登录、且拥有飞书多维表格读写权限的 `lark-cli`
 - 已启用 IMAP 的 163 邮箱及客户端授权码
+
+## GitHub Actions 无人值守运行
+
+1. 在飞书开放平台创建并发布自建应用，授予目标 Base 的读写权限，并把应用加入该 Base 的可编辑协作者。
+2. 在 GitHub 仓库 `Settings → Secrets and variables → Actions` 配置：`MAIL_ADDRESS`、`MAIL_AUTH_CODE`、`FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_APP_TOKEN`、`FEISHU_NOTIFY_WEBHOOK`。
+3. 推送本仓库后，在 `Actions → Career email tracker → Run workflow` 手动运行一次。首次扫描会按每批 200 封持续推进；看到 `fetch.more: false` 后即完成历史回溯。
+
+工作流每天北京时间约 20:07 运行。飞书会新增“系统状态”表，仅保存 IMAP 游标；应聘总览仍维持四个展示字段。运行日志只输出汇总，不输出邮件正文或密钥。
 
 ## 本机配置
 

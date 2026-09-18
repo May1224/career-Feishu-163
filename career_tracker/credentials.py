@@ -1,10 +1,11 @@
-"""Windows Credential Manager only. Never fall back to plaintext secrets."""
+"""Credential access for desktop and unattended runners."""
 import ctypes
 import os
 from ctypes import wintypes
 from .core import ROOT, digest
 
 PREFIX = 'CodexCareerTracker/' + digest(str(ROOT).casefold())[:16] + '/'
+ENVIRONMENT_NAMES = {'imap_authorization': 'MAIL_AUTH_CODE', 'feishu_secret': 'FEISHU_APP_SECRET'}
 
 
 class CREDENTIAL(ctypes.Structure):
@@ -40,6 +41,9 @@ def put(name, value):
 
 
 def get(name):
+    supplied = os.environ.get(ENVIRONMENT_NAMES.get(name, ''))
+    if supplied:
+        return supplied
     dll = api()
     pointer = ctypes.POINTER(CREDENTIAL)()
     if not dll.CredReadW(PREFIX + name, 1, 0, ctypes.byref(pointer)):

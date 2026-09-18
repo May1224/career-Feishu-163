@@ -83,7 +83,22 @@ def applications(db):
                 app[field] = e[field]
         app.update(effective_at=e['effective_at'], evidence=e['evidence'], needs_review=e['needs_review'],
                    review_reason=e['review_reason'], subject=e['subject'], received=e['received'])
-    return list(result.values())
+    suppressed = set(get_meta(db, 'suppressed_applications', []))
+    return [app for app in result.values() if app['id'] not in suppressed]
+
+
+def suppress_before(db, cutoff):
+    """Hide applications received before a date without erasing the local audit trail."""
+    if not isinstance(cutoff, datetime) or cutoff.tzinfo is None:
+        raise ValueError('截止时间必须是包含时区的 datetime')
+    targets = [app['id'] for app in applications(db)
+               if datetime.fromisoformat(app['received']) < cutoff.astimezone(TZ)]
+    if not targets:
+        return []
+    current = set(get_meta(db, 'suppressed_applications', []))
+    with db:
+        set_meta(db, 'suppressed_applications', sorted(current | set(targets)))
+    return targets
 
 
 def prepare(db, limit=20):

@@ -5,7 +5,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from career_tracker.core import connect, get_meta, ingest, prepare, applications
+from career_tracker.core import connect, get_meta, ingest, prepare, applications, suppress_before, TZ
 from career_tracker.feishu import overview_fields, sync, index_records, FeishuError
 from career_tracker.mailbox import parse_message, fetch, folder_names
 from career_tracker.__main__ import run_cycle
@@ -147,6 +147,17 @@ class StoreTests(StoreFixture):
         ingest(self.db, self.result({'m1': []}))
         self.assertEqual(applications(self.db), [])
         self.assertEqual(prepare(self.db)['messages'], [])
+
+    def test_suppression_hides_old_application_and_its_history_from_sync(self):
+        self.add_mail('m1')
+        ingest(self.db, self.result({'m1': [event()]}))
+        hidden = suppress_before(self.db, datetime.fromisoformat('2026-09-15T00:00:00+08:00'))
+        self.assertEqual(len(hidden), 1)
+        self.assertEqual(applications(self.db), [])
+        api = FakeFeishu()
+        result = sync(self.db, api, {'overview_table': 'overview', 'history_table': 'history'})
+        self.assertEqual(result['applications'], 0)
+        self.assertEqual(api.tables['history'], [])
 
     def test_run_cycle_waits_for_analysis_before_syncing(self):
         self.add_mail('m1')

@@ -11,6 +11,16 @@ from .mailbox import fetch
 
 
 def config():
+    cloud_values = {
+        'email': os.getenv('MAIL_ADDRESS'),
+        'feishu_app_id': os.getenv('FEISHU_APP_ID'),
+        'feishu_app_token': os.getenv('FEISHU_APP_TOKEN'),
+    }
+    if any(cloud_values.values()):
+        cloud_values.update(backend='api', timezone='Asia/Shanghai', cloud_runner=True)
+        if not all(cloud_values.values()):
+            raise RuntimeError('云端环境缺少 MAIL_ADDRESS、FEISHU_APP_ID 或 FEISHU_APP_TOKEN')
+        return cloud_values
     path = ROOT / 'config.json'
     if not path.exists():
         raise RuntimeError('尚未配置，请双击 配置邮箱和飞书.cmd')
@@ -24,7 +34,6 @@ def config():
 @contextmanager
 def lock():
     # OS file lock releases on process exit, including crashes; no stale PID removal.
-    import msvcrt
     path = ROOT / 'data/run.lock'
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a+b') as handle:
@@ -32,15 +41,28 @@ def lock():
             handle.write(b'0')
             handle.flush()
         handle.seek(0)
-        try:
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError:
-            raise RuntimeError('另一个命令正在执行，请稍后重试') from None
+        if os.name == 'nt':
+            import msvcrt
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError:
+                raise RuntimeError('另一个命令正在执行，请稍后重试') from None
+        else:
+            import fcntl
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                raise RuntimeError('另一个命令正在执行，请稍后重试') from None
         try:
             yield
         finally:
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            if os.name == 'nt':
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def run_cycle(db, settings, password, api, max_new, fetcher=fetch):
@@ -58,7 +80,7 @@ def run_cycle(db, settings, password, api, max_new, fetcher=fetch):
 def main():
     parser = argparse.ArgumentParser(description='163 招聘邮件 / Codex / 飞书多维表格')
     subs = parser.add_subparsers(dest='command', required=True)
-    for name in ('status', 'doctor', 'init-feishu', 'sync', 'mark-ready'):
+    for name in ('status', 'doctor', 'init-feishu', 'sync', 'mark-ready', 'cloud-run'):
         subs.add_parser(name)
     collect = subs.add_parser('fetch')
     collect.add_argument('--max-new', type=int, default=200)
@@ -99,7 +121,28 @@ def main():
                 output = {'ready': True, 'next': '让 Codex 启用已暂停的“求职邮件跟踪”定时任务'}
             else:
                 settings = config()
-                if args.command in ('fetch', 'run'):
+                if args.command == 'cloud-run':
+                    from .cloud import restore, save_cursors
+                    from .rules import analyze
+                    api = Feishu(settings, credentials.get('feishu_secret'))
+                    initialize(api, settings)
+                    restore(db, api, settings)
+                    fetched = fetch(db, settings, credentials.get('imap_authorization'), 200)
+                    accepted = 0
+                    api_key = os.getenv('OPENAI_API_KEY')
+                    while db.execute('SELECT count(*) FROM messages WHERE analyzed=0').fetchone()[0]:
+                        prepared = prepare(db, 20)
+                        if api_key:
+                            from .model import analyze as analyze_with_model
+                            accepted += ingest(db, analyze_with_model(prepared, api_key))
+                        else:
+                            accepted += ingest(db, analyze(prepared))
+                    synced = sync(db, api, settings)
+                    save_cursors(db, api, settings)
+                    output = {'fetch': fetched, 'accepted_events': accepted, 'sync': synced,
+                              'analysis_mode': 'openai' if api_key else 'rules',
+                              'next': '再次运行以继续首轮回溯' if fetched['more'] else None}
+                elif args.command in ('fetch', 'run'):
                     if not 1 <= args.max_new <= 2000:
                         raise ValueError('max-new 须在 1–2000 之间')
                     if args.command == 'fetch':
@@ -137,6 +180,11 @@ def main():
             if args.command not in ('status', 'prepare'):
                 with db:
                     set_meta(db, 'last_error', None)
+            if args.command == 'cloud-run' and (output['accepted_events'] or output['sync']['changed_records']):
+                from .notify import send
+                send(os.getenv('FEISHU_NOTIFY_WEBHOOK'),
+                     '求职邮件跟踪已更新：新增事件 %s 条，飞书记录变更 %s 条。' %
+                     (output['accepted_events'], output['sync']['changed_records']))
             save_json(ROOT / 'data/last-command.json', {'command': args.command, 'at': now(), 'result': output})
             print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
@@ -146,6 +194,9 @@ def main():
             message = str(error) if type(error) is not ValueError else '输入数据校验失败，请检查结构、时间和完整批次'
         else:
             message = '执行失败（' + type(error).__name__ + '）；检查网络和配置，未输出原始错误内容'
+        if args.command == 'cloud-run':
+            from .notify import send
+            send(os.getenv('FEISHU_NOTIFY_WEBHOOK'), '求职邮件跟踪执行失败：' + message)
         with db:
             set_meta(db, 'last_error', {'at': now(), 'command': args.command, 'message': message})
         print(json.dumps({'error': message}, ensure_ascii=False))

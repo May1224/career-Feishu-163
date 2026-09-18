@@ -92,11 +92,14 @@ OVERVIEW = {'同步键': 1, '公司名': 1, '岗位名': 1, '招聘批次': 1, '
             '阶段截止时间': 5, '收件日期': 5}
 HISTORY = {'同步键': 1, '应聘同步键': 1, '事件': 1, '事件时间': 5, '邮件时间': 5,
            '邮件标识': 1, '邮件标题': 1, '依据摘要': 1, '待确认': 7, '关联应聘': 18}
+SYSTEM = {'同步键': 1, '内容': 1}
 
 
-def initialize(api, config, path):
+def initialize(api, config, path=None):
     tables = api.listing(api.base + '/tables')
-    for key, title in [('overview_table', '应聘总览'), ('history_table', '流程历史')]:
+    for key, title, schema in [('overview_table', '应聘总览', OVERVIEW),
+                               ('history_table', '流程历史', HISTORY),
+                               ('system_table', '系统状态', SYSTEM)]:
         matches = [t for t in tables if t['name'] == title]
         if not config.get(key):
             if len(matches) > 1:
@@ -105,11 +108,12 @@ def initialize(api, config, path):
                 config[key] = matches[0]['table_id']
             else:
                 config[key] = api.call('POST', api.base + '/tables', {'table': {'name': title}})['data']['table_id']
-            save_json(path, config)
+            if path:
+                save_json(path, config)
         table = config[key]
         base = api.base + '/tables/' + table
         fields = {f['field_name']: f for f in api.listing(base + '/fields')}
-        for name, kind in (OVERVIEW if key == 'overview_table' else HISTORY).items():
+        for name, kind in schema.items():
             if name in fields:
                 if fields[name]['type'] != kind:
                     raise FeishuError('已有字段类型不匹配：' + name)
@@ -200,6 +204,10 @@ def sync(db, api, config):
     history = index_records(api.records(config['history_table']))
     changed = 0
     links = {}
+    active = applications(db)
+    active_ids = {app['id'] for app in active}
+    changed_apps = {row['application_id'] for row in db.execute(
+        "SELECT application_id FROM events WHERE id NOT LIKE 'snapshot:%'")}
 
     def deliver(kind, key, table, remote, fields):
         nonlocal changed
@@ -219,11 +227,20 @@ def sync(db, api, config):
             db.execute('INSERT OR REPLACE INTO deliveries VALUES (?,?,?)', (kind, key, signature))
         return record_id
 
-    for app in applications(db):
+    for app in active:
         key = app['id']
-        fields = overview_fields(app, overview.get(key, {}).get('fields', {}))
-        links[key] = deliver('overview', key, config['overview_table'], overview, fields)
-    for row in db.execute('SELECT * FROM events ORDER BY id').fetchall():
+        remote = overview.get(key, {})
+        # A cloud runner restores this app from Feishu on every invocation.  Do
+        # not rewrite unchanged snapshots merely because its local SQLite file
+        # is new; applications with a fresh mail event are still updated.
+        if remote and key not in changed_apps:
+            links[key] = remote['record_id']
+        else:
+            fields = overview_fields(app, remote.get('fields', {}))
+            links[key] = deliver('overview', key, config['overview_table'], overview, fields)
+    for row in db.execute("SELECT * FROM events WHERE id NOT LIKE 'snapshot:%' ORDER BY id").fetchall():
+        if row['application_id'] not in active_ids:
+            continue
         e = json.loads(row['payload'])
         fields = {'同步键': row['id'], '应聘同步键': row['application_id'], '事件': e['event'],
                   '事件时间': millis(e['effective_at']), '邮件时间': millis(e['received']),

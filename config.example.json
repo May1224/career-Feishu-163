@@ -1,6 +1,8 @@
 {
   "email": "your-name@163.com",
-  "backend": "cli",
+  "backend": "api",
+  "feishu_app_id": "cli_xxxxxxxxxxxxxxxx",
+  "feishu_app_token": "bascnxxxxxxxxxxxxxx",
   "timezone": "Asia/Shanghai",
   "folders": ["INBOX"],
   "initial_since": null
