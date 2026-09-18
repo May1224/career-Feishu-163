@@ -51,7 +51,12 @@ class Feishu:
                 # Do not expose Feishu's body or Base token.  The redacted route
                 # is enough to distinguish token creation, table setup and writes.
                 route = re.sub(r'(/apps/)[^/]+', r'\1[app-token]', path)
-                raise FeishuError(f'飞书 HTTP {error.code}（{method} {route}）；未输出响应正文以保护数据') from None
+                try:
+                    service_code = json.loads(error.read().decode('utf-8', 'replace')).get('code')
+                except (ValueError, UnicodeDecodeError):
+                    service_code = None
+                code_hint = f'，飞书代码 {service_code}' if isinstance(service_code, int) else ''
+                raise FeishuError(f'飞书 HTTP {error.code}（{method} {route}{code_hint}）；未输出响应正文以保护数据') from None
             except (URLError, TimeoutError, OSError):
                 if retryable and attempt < 3:
                     time.sleep(2 ** attempt)
