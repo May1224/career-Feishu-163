@@ -52,11 +52,17 @@ class Feishu:
                 # is enough to distinguish token creation, table setup and writes.
                 route = re.sub(r'(/apps/)[^/]+', r'\1[app-token]', path)
                 try:
-                    service_code = json.loads(error.read().decode('utf-8', 'replace')).get('code')
-                except (ValueError, UnicodeDecodeError):
+                    service_error = json.loads(error.read().decode('utf-8', 'replace'))
+                    service_code = service_error.get('code')
+                    violations = (service_error.get('error') or {}).get('permission_violations', [])
+                    scopes = sorted({item.get('subject') for item in violations
+                                     if isinstance(item, dict) and isinstance(item.get('subject'), str)})
+                except (ValueError, UnicodeDecodeError, AttributeError):
                     service_code = None
+                    scopes = []
                 code_hint = f'，飞书代码 {service_code}' if isinstance(service_code, int) else ''
-                raise FeishuError(f'飞书 HTTP {error.code}（{method} {route}{code_hint}）；未输出响应正文以保护数据') from None
+                scope_hint = '，缺少权限 ' + '、'.join(scopes) if scopes else ''
+                raise FeishuError(f'飞书 HTTP {error.code}（{method} {route}{code_hint}{scope_hint}）；未输出响应正文以保护数据') from None
             except (URLError, TimeoutError, OSError):
                 if retryable and attempt < 3:
                     time.sleep(2 ** attempt)
