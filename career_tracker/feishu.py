@@ -91,7 +91,9 @@ class Feishu:
         if existing:
             self.call('PUT', path + '/' + existing['record_id'], {'fields': fields})
             return existing['record_id']
-        token = str(uuid.uuid5(uuid.NAMESPACE_URL, self.base + table + stable_id))
+        # Bitable's client_token accepts UUID v4.  Keep one generated token for
+        # all network retries in this invocation; later runs reconcile by 同步键.
+        token = str(uuid.uuid4())
         result = self.call('POST', path, {'fields': fields}, {'client_token': token})
         return result['data']['record']['record_id']
 
