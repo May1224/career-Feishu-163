@@ -47,7 +47,9 @@ class Feishu:
                 if retryable and (error.code == 429 or error.code >= 500) and attempt < 3:
                     time.sleep(2 ** attempt)
                     continue
-                raise FeishuError(f'飞书 HTTP {error.code}；未输出响应正文以保护数据') from None
+                # The method and API route are safe diagnostics.  Do not expose
+                # Feishu's response body: it can contain user-controlled text.
+                raise FeishuError(f'飞书 HTTP {error.code}（{method} {path}）；未输出响应正文以保护数据') from None
             except (URLError, TimeoutError, OSError):
                 if retryable and attempt < 3:
                     time.sleep(2 ** attempt)
