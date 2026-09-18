@@ -2,8 +2,9 @@ name: Career email tracker
 
 on:
   schedule:
-    # 12:07 UTC = 20:07 Asia/Shanghai. Avoid the top-of-hour Actions peak.
-    - cron: '7 12 * * *'
+    # 04:07 / 12:07 UTC = 12:07 / 20:07 Asia/Shanghai.
+    # Offset by seven minutes to avoid the top-of-hour Actions peak.
+    - cron: '7 4,12 * * *'
   workflow_dispatch:
     inputs:
       mode:
