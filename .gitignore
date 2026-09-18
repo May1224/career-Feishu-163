@@ -1,6 +1,12 @@
 /data/*
 !/data/.gitkeep
 /config.json
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
 /.cache/
 /.agents/
 /skills-lock.json
