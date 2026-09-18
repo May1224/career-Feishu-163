@@ -135,7 +135,7 @@ def main():
                         from .rules import analyze
                         fetched = fetch(db, settings, credentials.get('imap_authorization'), 200)
                         accepted = 0
-                        api_key = os.getenv('OPENAI_API_KEY')
+                        api_key = os.getenv('LLM_API_KEY') or os.getenv('OPENAI_API_KEY')
                         while db.execute('SELECT count(*) FROM messages WHERE analyzed=0').fetchone()[0]:
                             prepared = prepare(db, 20)
                             if api_key:
@@ -146,7 +146,7 @@ def main():
                         synced = sync(db, api, settings)
                         save_cursors(db, api, settings)
                         output = {'fetch': fetched, 'accepted_events': accepted, 'sync': synced,
-                                  'analysis_mode': 'openai' if api_key else 'rules',
+                                  'analysis_mode': os.getenv('LLM_PROVIDER', 'openai') if api_key else 'rules',
                                   'next': '再次运行以继续首轮回溯' if fetched['more'] else None}
                 elif args.command in ('fetch', 'run'):
                     if not 1 <= args.max_new <= 2000:

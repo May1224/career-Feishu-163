@@ -26,6 +26,8 @@
 
 工作流每天北京时间约 20:07 运行。飞书会新增“系统状态”表，仅保存 IMAP 游标；应聘总览仍维持四个展示字段。运行日志只输出汇总，不输出邮件正文或密钥。
 
+可选的模型分析使用 OpenAI 兼容接口。新增 `LLM_API_KEY` Secret，并在 GitHub Variables 设置 `LLM_BASE_URL`、`LLM_MODEL` 与 `LLM_PROVIDER`。例如 Agnes 使用 `LLM_BASE_URL=https://apihub.agnes-ai.com/v1`，并将 `LLM_PROVIDER` 设为 `agnes`；模型名以 Agnes 控制台显示的文本模型标识为准。
+
 ## 本机配置
 
 1. 复制 `config.example.json` 为 `config.json`，或运行 `配置邮箱和飞书.cmd`。

@@ -1,4 +1,4 @@
-"""Optional structured OpenAI analysis for cloud runs."""
+"""Optional OpenAI-compatible structured analysis for cloud runs."""
 from __future__ import annotations
 
 import json
@@ -40,24 +40,35 @@ SCHEMA = {
 }
 
 
+def _json_content(value):
+    if isinstance(value, list):
+        value = ''.join(part.get('text', '') for part in value if isinstance(part, dict))
+    if not isinstance(value, str):
+        raise RuntimeError('模型未返回文本结果')
+    value = value.strip()
+    if value.startswith('```'):
+        value = value.split('\n', 1)[1] if '\n' in value else ''
+        value = value.rsplit('```', 1)[0].strip()
+    return json.loads(value)
+
+
 def analyze(batch, api_key):
-    payload = {'model': os.getenv('OPENAI_MODEL', 'gpt-4.1-mini'),
-               'input': [{'role': 'developer', 'content': [{'type': 'input_text', 'text': PROMPT}]},
-                         {'role': 'user', 'content': [{'type': 'input_text', 'text': json.dumps(batch, ensure_ascii=False)}]}],
-               'text': {'format': {'type': 'json_schema', 'name': 'career_mail_analysis', 'strict': True,
-                                   'schema': SCHEMA}}}
+    # Chat Completions is the common subset implemented by OpenAI-compatible
+    # providers, including Agnes. Core.ingest remains the final JSON validator.
+    base_url = os.getenv('LLM_BASE_URL', 'https://api.openai.com/v1').rstrip('/')
+    payload = {'model': os.getenv('LLM_MODEL', os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')),
+               'temperature': 0,
+               'response_format': {'type': 'json_object'},
+               'messages': [{'role': 'system', 'content': PROMPT + '\nReturn one JSON object only.'},
+                            {'role': 'user', 'content': json.dumps(batch, ensure_ascii=False)}]}
     try:
-        request = Request('https://api.openai.com/v1/responses', json.dumps(payload, ensure_ascii=False).encode(),
+        request = Request(base_url + '/chat/completions', json.dumps(payload, ensure_ascii=False).encode(),
                           {'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'}, method='POST')
         with urlopen(request, timeout=90) as response:
             result = json.load(response)
     except (HTTPError, URLError, TimeoutError, OSError):
         raise RuntimeError('模型分析请求失败；未输出服务端响应内容') from None
-    for item in result.get('output', []):
-        for content in item.get('content', []):
-            if content.get('type') == 'output_text' and isinstance(content.get('text'), str):
-                try:
-                    return json.loads(content['text'])
-                except json.JSONDecodeError:
-                    break
-    raise RuntimeError('模型未返回可验证的结构化结果')
+    try:
+        return _json_content(result['choices'][0]['message']['content'])
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise RuntimeError('模型未返回可验证的结构化结果') from None
