@@ -5,6 +5,15 @@ on:
     # 12:07 UTC = 20:07 Asia/Shanghai. Avoid the top-of-hour Actions peak.
     - cron: '7 12 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: '首次部署请选择 bootstrap；之后手动补跑请选择 sync'
+        required: true
+        default: bootstrap
+        type: choice
+        options:
+          - bootstrap
+          - sync
 
 permissions:
   contents: read
@@ -23,8 +32,14 @@ jobs:
         with:
           python-version: '3.11'
       - name: Read mailbox and update Feishu
-        run: python -m career_tracker cloud-run
+        run: |
+          if [ "$RUN_MODE" = "bootstrap" ]; then
+            python -m career_tracker cloud-bootstrap
+          else
+            python -m career_tracker cloud-run
+          fi
         env:
+          RUN_MODE: ${{ github.event.inputs.mode || 'sync' }}
           MAIL_ADDRESS: ${{ secrets.MAIL_ADDRESS }}
           MAIL_AUTH_CODE: ${{ secrets.MAIL_AUTH_CODE }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}

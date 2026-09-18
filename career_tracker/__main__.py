@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from . import credentials
 from .core import ROOT, applications, connect, get_meta, ingest, now, prepare, save_json, set_meta
 from .feishu import Feishu, initialize, sync
-from .mailbox import fetch
+from .mailbox import bootstrap, fetch
 
 
 def config():
@@ -80,7 +80,7 @@ def run_cycle(db, settings, password, api, max_new, fetcher=fetch):
 def main():
     parser = argparse.ArgumentParser(description='163 招聘邮件 / Codex / 飞书多维表格')
     subs = parser.add_subparsers(dest='command', required=True)
-    for name in ('status', 'doctor', 'init-feishu', 'sync', 'mark-ready', 'cloud-run'):
+    for name in ('status', 'doctor', 'init-feishu', 'sync', 'mark-ready', 'cloud-run', 'cloud-bootstrap'):
         subs.add_parser(name)
     collect = subs.add_parser('fetch')
     collect.add_argument('--max-new', type=int, default=200)
@@ -121,27 +121,33 @@ def main():
                 output = {'ready': True, 'next': '让 Codex 启用已暂停的“求职邮件跟踪”定时任务'}
             else:
                 settings = config()
-                if args.command == 'cloud-run':
+                if args.command in ('cloud-run', 'cloud-bootstrap'):
                     from .cloud import restore, save_cursors
-                    from .rules import analyze
                     api = Feishu(settings, credentials.get('feishu_secret'))
                     initialize(api, settings)
                     restore(db, api, settings)
-                    fetched = fetch(db, settings, credentials.get('imap_authorization'), 200)
-                    accepted = 0
-                    api_key = os.getenv('OPENAI_API_KEY')
-                    while db.execute('SELECT count(*) FROM messages WHERE analyzed=0').fetchone()[0]:
-                        prepared = prepare(db, 20)
-                        if api_key:
-                            from .model import analyze as analyze_with_model
-                            accepted += ingest(db, analyze_with_model(prepared, api_key))
-                        else:
-                            accepted += ingest(db, analyze(prepared))
-                    synced = sync(db, api, settings)
-                    save_cursors(db, api, settings)
-                    output = {'fetch': fetched, 'accepted_events': accepted, 'sync': synced,
-                              'analysis_mode': 'openai' if api_key else 'rules',
-                              'next': '再次运行以继续首轮回溯' if fetched['more'] else None}
+                    if args.command == 'cloud-bootstrap':
+                        output = bootstrap(db, settings, credentials.get('imap_authorization'))
+                        save_cursors(db, api, settings)
+                    else:
+                        if not get_meta(db, 'cloud_initialized', False):
+                            raise RuntimeError('尚未完成云端初始化；请在 Actions 手动选择 bootstrap。该操作只保存游标，不处理历史邮件')
+                        from .rules import analyze
+                        fetched = fetch(db, settings, credentials.get('imap_authorization'), 200)
+                        accepted = 0
+                        api_key = os.getenv('OPENAI_API_KEY')
+                        while db.execute('SELECT count(*) FROM messages WHERE analyzed=0').fetchone()[0]:
+                            prepared = prepare(db, 20)
+                            if api_key:
+                                from .model import analyze as analyze_with_model
+                                accepted += ingest(db, analyze_with_model(prepared, api_key))
+                            else:
+                                accepted += ingest(db, analyze(prepared))
+                        synced = sync(db, api, settings)
+                        save_cursors(db, api, settings)
+                        output = {'fetch': fetched, 'accepted_events': accepted, 'sync': synced,
+                                  'analysis_mode': 'openai' if api_key else 'rules',
+                                  'next': '再次运行以继续首轮回溯' if fetched['more'] else None}
                 elif args.command in ('fetch', 'run'):
                     if not 1 <= args.max_new <= 2000:
                         raise ValueError('max-new 须在 1–2000 之间')

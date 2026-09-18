@@ -22,7 +22,7 @@
 
 1. 在飞书开放平台创建并发布自建应用，授予目标 Base 的读写权限，并把应用加入该 Base 的可编辑协作者。
 2. 在 GitHub 仓库 `Settings → Secrets and variables → Actions` 配置：`MAIL_ADDRESS`、`MAIL_AUTH_CODE`、`FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_APP_TOKEN`、`FEISHU_NOTIFY_WEBHOOK`。
-3. 推送本仓库后，在 `Actions → Career email tracker → Run workflow` 手动运行一次。首次扫描会按每批 200 封持续推进；看到 `fetch.more: false` 后即完成历史回溯。
+3. 已有表格内容时，首次手动运行选择 `bootstrap`。它只保存每个文件夹当前的 IMAP 游标，不读取或写入历史应聘记录。之后定时任务只读取新增邮件；需要手动补跑时选择 `sync`。
 
 工作流每天北京时间约 20:07 运行。飞书会新增“系统状态”表，仅保存 IMAP 游标；应聘总览仍维持四个展示字段。运行日志只输出汇总，不输出邮件正文或密钥。
 

@@ -30,7 +30,7 @@ def restore(db, api, config):
     """Restore IMAP cursors and application snapshots from Feishu."""
     for row in api.records(config['system_table']):
         key, value = _text(row['fields'], '同步键'), _text(row['fields'], '内容')
-        if key.startswith('cursor:') or key == 'initial_since':
+        if key.startswith('cursor:') or key in ('initial_since', 'cloud_initialized'):
             try:
                 with db:
                     set_meta(db, key, json.loads(value))
@@ -59,6 +59,6 @@ def restore(db, api, config):
 
 def save_cursors(db, api, config):
     existing = {plain(row['fields'].get('同步键')): row for row in api.records(config['system_table'])}
-    for (key,) in db.execute("SELECT key FROM meta WHERE key='initial_since' OR key LIKE 'cursor:%'"):
+    for (key,) in db.execute("SELECT key FROM meta WHERE key IN ('initial_since','cloud_initialized') OR key LIKE 'cursor:%'"):
         value = db.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone()[0]
         api.upsert(config['system_table'], existing.get(key), {'同步键': key, '内容': value}, key)

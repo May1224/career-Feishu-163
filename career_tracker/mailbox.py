@@ -158,3 +158,38 @@ def fetch(db, config, password, max_new=200, factory=imaplib.IMAP4_SSL):
             client.logout()
         except Exception:
             pass
+
+
+def bootstrap(db, config, password, factory=imaplib.IMAP4_SSL):
+    """Set cloud cursors to the mailbox head without processing old mail."""
+    client = factory('imap.163.com', 993, ssl_context=ssl.create_default_context(), timeout=30)
+    folders_done = []
+    try:
+        client.login(config['email'], password)
+        if b'ID' in [c.upper() if isinstance(c, bytes) else c.upper().encode() for c in client.capabilities]:
+            imaplib.Commands.setdefault('ID', ('AUTH', 'SELECTED'))
+            client._simple_command('ID', '("name" "CodexCareerTracker" "version" "1.0")')
+        for folder in config.get('folders') or folder_names(client):
+            status, _ = client.select(folder, readonly=True)
+            if status != 'OK':
+                raise RuntimeError('无法只读打开邮箱文件夹；请检查 IMAP 客户端授权')
+            response = client.response('UIDVALIDITY')[1]
+            if not response or not response[0]:
+                raise RuntimeError('邮箱未提供 UIDVALIDITY')
+            status, data = client.uid('SEARCH', None, 'ALL')
+            if status != 'OK':
+                raise RuntimeError('邮件检索失败')
+            uids = [int(value) for value in (data[0] or b'').split()]
+            with db:
+                set_meta(db, 'cursor:' + folder, {'validity': response[0].decode(), 'uid': max(uids, default=0)})
+            folders_done.append(folder)
+        with db:
+            set_meta(db, 'cloud_initialized', True)
+            set_meta(db, 'last_fetch_success', now())
+        return {'folders': len(folders_done), 'processed_messages': 0,
+                'next': '后续 cloud-run 仅读取初始化后新增的邮件'}
+    finally:
+        try:
+            client.logout()
+        except Exception:
+            pass
