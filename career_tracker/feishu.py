@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -47,9 +48,10 @@ class Feishu:
                 if retryable and (error.code == 429 or error.code >= 500) and attempt < 3:
                     time.sleep(2 ** attempt)
                     continue
-                # The method and API route are safe diagnostics.  Do not expose
-                # Feishu's response body: it can contain user-controlled text.
-                raise FeishuError(f'飞书 HTTP {error.code}（{method} {path}）；未输出响应正文以保护数据') from None
+                # Do not expose Feishu's body or Base token.  The redacted route
+                # is enough to distinguish token creation, table setup and writes.
+                route = re.sub(r'(/apps/)[^/]+', r'\1[app-token]', path)
+                raise FeishuError(f'飞书 HTTP {error.code}（{method} {route}）；未输出响应正文以保护数据') from None
             except (URLError, TimeoutError, OSError):
                 if retryable and attempt < 3:
                     time.sleep(2 ** attempt)
