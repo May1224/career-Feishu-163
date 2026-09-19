@@ -117,7 +117,10 @@ def prepare(db, limit=20):
 def timestamp(value):
     if not isinstance(value, str):
         raise ValueError('时间必须是包含时区的 ISO 8601 字符串')
-    dt = datetime.fromisoformat(value)
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        raise ValueError('时间格式必须是 ISO 8601 字符串') from None
     if dt.tzinfo is None:
         raise ValueError('时间缺少时区')
     return dt.astimezone(TZ).isoformat(timespec='seconds')

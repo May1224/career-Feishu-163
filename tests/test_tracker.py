@@ -4,10 +4,12 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from career_tracker.core import connect, get_meta, ingest, prepare, applications, suppress_before, TZ
 from career_tracker.feishu import overview_fields, sync, index_records, FeishuError
 from career_tracker.mailbox import parse_message, fetch, folder_names
+from career_tracker.model import SCHEMA, analyze as analyze_with_model
 from career_tracker.__main__ import run_cycle
 
 
@@ -191,6 +193,26 @@ class FakeFeishu:
             self.fail_after_create = False
             raise FeishuError('模拟服务端已写入但客户端未收到响应')
         return row['record_id']
+
+
+class ModelTests(unittest.TestCase):
+    def test_model_request_includes_the_required_schema(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        result = {'choices': [{'message': {'content': '{"batch_id":"batch","results":[]}'}}]}
+        with patch('career_tracker.model.urlopen', return_value=Response()) as request, \
+                patch('career_tracker.model.json.load', return_value=result):
+            self.assertEqual(analyze_with_model({'batch_id': 'batch', 'messages': [], 'stages': []}, 'test-key'),
+                             {'batch_id': 'batch', 'results': []})
+        body = __import__('json').loads(request.call_args.args[0].data)
+        self.assertIn('"batch_id"', body['messages'][0]['content'])
+        self.assertIn('"additionalProperties":false', body['messages'][0]['content'])
+        self.assertEqual(SCHEMA['type'], 'object')
 
 
 RAW = ('From: hr@example.com\r\nSubject: interview invitation\r\n'

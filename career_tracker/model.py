@@ -56,10 +56,13 @@ def analyze(batch, api_key):
     # Chat Completions is the common subset implemented by OpenAI-compatible
     # providers, including Agnes. Core.ingest remains the final JSON validator.
     base_url = os.getenv('LLM_BASE_URL', 'https://api.openai.com/v1').rstrip('/')
+    system_prompt = (PROMPT + '\nReturn one JSON object only. Its shape must exactly match this JSON Schema:\n'
+                     + json.dumps(SCHEMA, ensure_ascii=False, separators=(',', ':'))
+                     + '\nFor stage, use only a value from batch.stages. Omit unknown optional fields; do not use null.')
     payload = {'model': os.getenv('LLM_MODEL', os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')),
                'temperature': 0,
                'response_format': {'type': 'json_object'},
-               'messages': [{'role': 'system', 'content': PROMPT + '\nReturn one JSON object only.'},
+               'messages': [{'role': 'system', 'content': system_prompt},
                             {'role': 'user', 'content': json.dumps(batch, ensure_ascii=False)}]}
     try:
         request = Request(base_url + '/chat/completions', json.dumps(payload, ensure_ascii=False).encode(),

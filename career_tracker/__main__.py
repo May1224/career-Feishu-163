@@ -197,7 +197,7 @@ def main():
     except Exception as error:
         # Only our explicit diagnostic messages are safe to persist; IMAP/HTTP errors can echo secrets/body.
         if type(error) in (RuntimeError, ValueError) or error.__class__.__name__ == 'FeishuError':
-            message = str(error) if type(error) is not ValueError else '输入数据校验失败，请检查结构、时间和完整批次'
+            message = str(error)
         else:
             message = '执行失败（' + type(error).__name__ + '）；检查网络和配置，未输出原始错误内容'
         if args.command == 'cloud-run':
