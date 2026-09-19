@@ -97,11 +97,22 @@ class StoreTests(StoreFixture):
     def test_validation_is_atomic(self):
         self.add_mail('m1')
         self.add_mail('m2')
-        invalid = dict(event(), effective_at='2026-09-14T10:00:00')
+        invalid = dict(event(), stage='不支持的流程阶段')
         with self.assertRaises(ValueError):
             ingest(self.db, self.result({'m1': [event()], 'm2': [invalid]}))
         self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0], 0)
         self.assertEqual(len(prepare(self.db)['messages']), 2)
+
+    def test_invalid_model_time_is_retained_for_review(self):
+        self.add_mail('m1')
+        invalid = dict(event(), effective_at='2026年9月14日', deadline='下周三', interview_at='下午三点')
+        ingest(self.db, self.result({'m1': [invalid]}))
+        app = applications(self.db)[0]
+        self.assertEqual(app['effective_at'], '2026-09-14T10:00:00+08:00')
+        self.assertTrue(app['needs_review'])
+        self.assertIn('时间格式无效', app['review_reason'])
+        self.assertIsNone(app['deadline'])
+        self.assertIsNone(app['interview_at'])
 
     def test_reject_missing_and_duplicate_results(self):
         self.add_mail('m1')

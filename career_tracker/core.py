@@ -172,10 +172,27 @@ def ingest(db, result):
                 raise ValueError('stage 不可为 null')
             if 'next_action' in e and (not isinstance(e['next_action'], str) or len(e['next_action']) > 2000):
                 raise ValueError('next_action 必须为文本')
-            e['effective_at'] = timestamp(e['effective_at'])
+            invalid_time = False
+            try:
+                e['effective_at'] = timestamp(e['effective_at'])
+            except ValueError:
+                # A model may return a human-readable date despite the schema.
+                # The received timestamp is an auditable ordering fallback.
+                e['effective_at'] = mail['received']
+                invalid_time = True
             for key in ('deadline', 'interview_at'):
                 if key in e and e[key] is not None:
-                    e[key] = timestamp(e[key])
+                    try:
+                        e[key] = timestamp(e[key])
+                    except ValueError:
+                        # Do not infer a deadline or interview time from an
+                        # ambiguous model value; require human confirmation.
+                        e.pop(key)
+                        invalid_time = True
+            if invalid_time:
+                e['needs_review'] = True
+                e['review_reason'] = '；'.join(part for part in (
+                    e['review_reason'].strip(), '模型返回的时间格式无效，已按收件时间记录') if part)
             if not all(e[k].strip() for k in ('company', 'role', 'recruitment')) or mail.get('truncated'):
                 e['needs_review'] = True
                 e['review_reason'] = e['review_reason'] or '身份信息缺失或正文截断'
