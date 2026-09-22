@@ -2,11 +2,8 @@ name: Career email tracker
 
 on:
   schedule:
-    # 04:23 / 12:23 UTC = 12:23 / 20:23 Asia/Shanghai.
-    # Keep clear of GitHub Actions' top-of-hour scheduling peak.
-    - cron: '23 4,12 * * *'
-    # Idempotent fallback in case GitHub drops the primary schedule event.
-    - cron: '43 4,12 * * *'
+    # 04:00 / 12:00 UTC = 12:00 / 20:00 Asia/Shanghai.
+    - cron: '0 4,12 * * *'
   workflow_dispatch:
     inputs:
       mode:
