@@ -2,8 +2,8 @@ name: Career email tracker
 
 on:
   schedule:
-    # 04:00 / 12:00 UTC = 12:00 / 20:00 Asia/Shanghai.
-    - cron: '0 4,12 * * *'
+    # 12:00 UTC = 20:00 Asia/Shanghai.
+    - cron: '0 12 * * *'
   workflow_dispatch:
     inputs:
       mode:
