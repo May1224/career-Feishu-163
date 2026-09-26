@@ -225,6 +225,22 @@ class ModelTests(unittest.TestCase):
         self.assertIn('"additionalProperties":false', body['messages'][0]['content'])
         self.assertEqual(SCHEMA['type'], 'object')
 
+    def test_agnes_request_uses_documented_compatibility_subset(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        result = {'choices': [{'message': {'content': '{"batch_id":"batch","results":[]}'}}]}
+        with patch.dict('career_tracker.model.os.environ', {'LLM_PROVIDER': 'agnes'}, clear=False), \
+                patch('career_tracker.model.urlopen', return_value=Response()) as request, \
+                patch('career_tracker.model.json.load', return_value=result):
+            analyze_with_model({'batch_id': 'batch', 'messages': [], 'stages': []}, 'test-key')
+        body = json.loads(request.call_args.args[0].data)
+        self.assertNotIn('response_format', body)
+
 
 RAW = ('From: hr@example.com\r\nSubject: interview invitation\r\n'
        'Date: Mon, 14 Sep 2026 10:00:00 +0800\r\nMessage-ID: <test@example.com>\r\n'

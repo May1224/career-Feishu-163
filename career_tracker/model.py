@@ -61,16 +61,21 @@ def analyze(batch, api_key):
                      + '\nFor stage, use only a value from batch.stages. Omit unknown optional fields; do not use null.')
     payload = {'model': os.getenv('LLM_MODEL', os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')),
                'temperature': 0,
-               'response_format': {'type': 'json_object'},
                'messages': [{'role': 'system', 'content': system_prompt},
                             {'role': 'user', 'content': json.dumps(batch, ensure_ascii=False)}]}
+    # Agnes documents the OpenAI-compatible Chat Completions subset without
+    # response_format. The prompt still requires a single JSON object.
+    if os.getenv('LLM_PROVIDER', '').casefold() not in ('agnes',):
+        payload['response_format'] = {'type': 'json_object'}
     try:
         request = Request(base_url + '/chat/completions', json.dumps(payload, ensure_ascii=False).encode(),
                           {'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'}, method='POST')
         with urlopen(request, timeout=90) as response:
             result = json.load(response)
-    except (HTTPError, URLError, TimeoutError, OSError):
-        raise RuntimeError('模型分析请求失败；未输出服务端响应内容') from None
+    except HTTPError as error:
+        raise RuntimeError(f'模型服务 HTTP {error.code}；未输出服务端响应内容') from None
+    except (URLError, TimeoutError, OSError):
+        raise RuntimeError('模型网络连接失败；未输出服务端响应内容') from None
     try:
         return _json_content(result['choices'][0]['message']['content'])
     except (KeyError, IndexError, TypeError, ValueError):
